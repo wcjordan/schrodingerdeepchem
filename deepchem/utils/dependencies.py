@@ -26,4 +26,4 @@ except:
   print(
       "Attempting to run models with XGBOOST dependencies will throw runtime errors"
   )
-  pdbfixer = None
+  simtk = None
