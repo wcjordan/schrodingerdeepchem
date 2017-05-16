@@ -11,7 +11,6 @@ __license__ = "MIT"
 
 import numpy as np
 from deepchem.utils.dependencies import mdtraj as md
-import mdtraj as md
 from deepchem.utils.save import log
 from deepchem.feat import Featurizer
 
