@@ -9,3 +9,21 @@ except:
       "Attempting to run models with XGBOOST dependencies will throw runtime errors"
   )
   xgboost = None
+
+try:
+  import pdbfixer as pdbfixer
+except:
+  print("Warning: No XGBOOST installed on your system")
+  print(
+      "Attempting to run models with XGBOOST dependencies will throw runtime errors"
+  )
+  pdbfixer = None
+
+try:
+  import simtk as simtk
+except:
+  print("Warning: No XGBOOST installed on your system")
+  print(
+      "Attempting to run models with XGBOOST dependencies will throw runtime errors"
+  )
+  pdbfixer = None
