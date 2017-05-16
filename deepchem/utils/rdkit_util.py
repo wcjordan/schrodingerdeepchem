@@ -4,8 +4,8 @@ import networkx as nx
 import numpy as np
 import os
 
-from utils.dependencies import pdbfixer
-from utils.dependencies import simtk
+from deepchem.utils.dependencies import pdbfixer
+from deepchem.utils.dependencies import simtk
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import rdmolops
