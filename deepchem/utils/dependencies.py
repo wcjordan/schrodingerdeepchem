@@ -27,3 +27,12 @@ except:
       "Attempting to run models with XGBOOST dependencies will throw runtime errors"
   )
   simtk = None
+
+try:
+  import mdtraj as mdtraj
+except:
+  print("Warning: No XGBOOST installed on your system")
+  print(
+      "Attempting to run models with XGBOOST dependencies will throw runtime errors"
+  )
+  mdtraj = None
