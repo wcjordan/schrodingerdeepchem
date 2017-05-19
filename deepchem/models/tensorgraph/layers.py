@@ -11,10 +11,10 @@ class Layer(object):
   layer_number_dict = {}
 
   def __init__(self, in_layers=None, **kwargs):
-    if "name" not in kwargs:
-      self.name = "%s_%s" % (self.__class__.__name__, self._get_layer_number())
-    else:
+    if "name" in kwargs:
       self.name = kwargs['name']
+    else:
+      self.name = None
     if "tensorboard" not in kwargs:
       self.tensorboard = False
     else:
@@ -46,19 +46,6 @@ class Layer(object):
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
     raise NotImplementedError("Subclasses must implement for themselves")
-
-  def __key(self):
-    return self.name
-
-  def __eq__(x, y):
-    if x is None or y is None:
-      return False
-    if type(x) != type(y):
-      return False
-    return x.__key() == y.__key()
-
-  def __hash__(self):
-    return hash(self.__key())
 
   def shared(self, in_layers):
     """
@@ -143,8 +130,6 @@ class Dense(Layer):
       biases_initializer=tf.zeros_initializer,
       weights_initializer=tf.contrib.layers.variance_scaling_initializer,
       time_series=False,
-      scope_name=None,
-      reuse=False,
       **kwargs):
     """Create a dense layer.
 
@@ -166,10 +151,6 @@ class Dense(Layer):
       the initializer for weight values
     time_series: bool
       if True, the dense layer is applied to each element of a batch in sequence
-    scope_name: str
-      an optional scope name for the layer's variables
-    reuse: bool
-      whether or not the layer and its variables should be reused
     """
     super(Dense, self).__init__(**kwargs)
     self.out_channels = out_channels
@@ -178,10 +159,8 @@ class Dense(Layer):
     self.biases_initializer = biases_initializer
     self.weights_initializer = weights_initializer
     self.time_series = time_series
-    self.reuse = reuse
-    if scope_name is None:
-      scope_name = self.name
-    self.scope_name = scope_name
+    self._reuse = False
+    self._shared_with = None
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
     if in_layers is None:
@@ -201,8 +180,8 @@ class Dense(Layer):
           activation_fn=self.activation_fn,
           biases_initializer=biases_initializer,
           weights_initializer=self.weights_initializer(),
-          scope=self.scope_name,
-          reuse=self.reuse,
+          scope=self._get_scope_name(),
+          reuse=self._reuse,
           trainable=True)
       return self.out_tensor
     dense_fn = lambda x: tf.contrib.layers.fully_connected(x,
@@ -210,8 +189,8 @@ class Dense(Layer):
                                                            activation_fn=self.activation_fn,
                                                            biases_initializer=biases_initializer,
                                                            weights_initializer=self.weights_initializer(),
-                                                           scope=self.scope_name,
-                                                           reuse=self.reuse,
+                                                           scope=self._get_scope_name(),
+                                                           reuse=self._reuse,
                                                            trainable=True)
     out_tensor = tf.map_fn(dense_fn, parent.out_tensor)
     if set_tensors:
@@ -221,16 +200,23 @@ class Dense(Layer):
     return out_tensor
 
   def shared(self, in_layers):
-    self.reuse = True
-    return Dense(
+    copy = Dense(
         self.out_channels,
         self.activation_fn,
         self.biases_initializer,
         self.weights_initializer,
         time_series=self.time_series,
-        reuse=self.reuse,
-        scope_name=self.scope_name,
         in_layers=in_layers)
+    self._reuse = True
+    copy._reuse = True
+    copy._shared_with = self
+    return copy
+
+  def _get_scope_name(self):
+    if self._shared_with is None:
+      return self.name
+    else:
+      return self._shared_with._get_scope_name()
 
 
 class Flatten(Layer):
@@ -485,6 +471,107 @@ class Concat(Layer):
     out_tensors = [x.out_tensor for x in in_layers]
 
     out_tensor = tf.concat(out_tensors, axis=self.axis)
+    if set_tensors:
+      self.out_tensor = out_tensor
+    return out_tensor
+
+
+class Constant(Layer):
+  """Output a constant value."""
+
+  def __init__(self, value, dtype=tf.float32, **kwargs):
+    """Construct a constant layer.
+
+    Parameters
+    ----------
+    value: array
+      the value the layer should output
+    dtype: tf.DType
+      the data type of the output value.
+    """
+    self.value = value
+    self.dtype = dtype
+    super(Constant, self).__init__(**kwargs)
+
+  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
+    out_tensor = tf.constant(self.value, dtype=self.dtype)
+    if set_tensors:
+      self.out_tensor = out_tensor
+    return out_tensor
+
+
+class Variable(Layer):
+  """Output a trainable value."""
+
+  def __init__(self, initial_value, dtype=tf.float32, **kwargs):
+    """Construct a variable layer.
+
+    Parameters
+    ----------
+    initial_value: array
+      the initial value the layer should output
+    dtype: tf.DType
+      the data type of the output value.
+    """
+    self.initial_value = initial_value
+    self.dtype = dtype
+    super(Variable, self).__init__(**kwargs)
+
+  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
+    out_tensor = tf.Variable(self.initial_value, dtype=self.dtype)
+    if set_tensors:
+      self.out_tensor = out_tensor
+    return out_tensor
+
+
+class Add(Layer):
+  """Compute the (optionally weighted) sum of the input layers."""
+
+  def __init__(self, weights=None, **kwargs):
+    """Create an Add layer.
+
+    Parameters
+    ----------
+    weights: array
+      an array of length equal to the number of input layers, giving the weight
+      to multiply each input by.  If None, all weights are set to 1.
+    """
+    super(Add, self).__init__(**kwargs)
+    self.weights = weights
+
+  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
+    if in_layers is None:
+      in_layers = self.in_layers
+    in_layers = convert_to_layers(in_layers)
+    weights = self.weights
+    if weights is None:
+      weights = [1] * len(in_layers)
+    out_tensor = in_layers[0].out_tensor
+    if weights[0] != 1:
+      out_tensor *= weights[0]
+    for layer, weight in zip(in_layers[1:], weights[1:]):
+      if weight == 1:
+        out_tensor += layer.out_tensor
+      else:
+        out_tensor += weight * layer.out_tensor
+    if set_tensors:
+      self.out_tensor = out_tensor
+    return out_tensor
+
+
+class Multiply(Layer):
+  """Compute the product of the input layers."""
+
+  def __init__(self, **kwargs):
+    super(Multiply, self).__init__(**kwargs)
+
+  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
+    if in_layers is None:
+      in_layers = self.in_layers
+    in_layers = convert_to_layers(in_layers)
+    out_tensor = in_layers[0].out_tensor
+    for layer in in_layers[1:]:
+      out_tensor *= layer.out_tensor
     if set_tensors:
       self.out_tensor = out_tensor
     return out_tensor
