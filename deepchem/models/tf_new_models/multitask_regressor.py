@@ -43,14 +43,14 @@ class MultitaskGraphRegressor(Model):
                pad_batches=True,
                verbose=True):
 
-    super().__init__(self, model_dir=logdir, verbose=verbose)
+    super(MultitaskGraphRegressor, self).__init__(self, model_dir=logdir, verbose=verbose)
     self.n_tasks = n_tasks
     self.final_loss = final_loss
     self.model = model
     self.sess = tf.Session(graph=self.model.graph)
 
     with self.model.graph.as_default():
-      # Extract model info 
+      # Extract model info
       self.batch_size = batch_size
       self.pad_batches = pad_batches
       # Get graph topology for x
@@ -181,7 +181,7 @@ class MultitaskGraphRegressor(Model):
 
   def save(self):
     """
-    No-op since this model doesn't currently support saving... 
+    No-op since this model doesn't currently support saving...
     """
     pass
 
